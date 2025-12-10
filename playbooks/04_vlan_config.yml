@@ -1,51 +1,29 @@
-# 04_vlan_config.yml - Create VLANs and configure trunk ports on switch, plus router subinterfaces
----
+# Define VLAN list at top level so both plays can access it
 - name: VLAN and trunk configuration on switch
   hosts: cisco-switches
   gather_facts: no
   become: yes
   vars:
-    # Define VLAN IDs and names (mark native VLAN where appropriate)
     vlan_list:
       - { id: 20, name: Management, native: true }
       - { id: 30, name: Data }
       - { id: 40, name: Voice }
-    # Define trunk interfaces to configure on switches
     trunk_ports:
       - FastEthernet0/1
       - FastEthernet0/2
   tasks:
-    - name: Ensure VLANs 20, 30, 40 are present on Switch1
-      ios_vlan:
-        vlan_id: "{{ item.id }}"
-        name: "{{ item.name }}"
-        state: present
-      loop: "{{ vlan_list }}"
-    - name: Configure trunk settings on interfaces F0/1 and F0/2
-      ios_config:
-        parents: "interface {{ item }}"
-        lines:
-          - switchport trunk encapsulation dot1q
-          - switchport mode trunk
-          - switchport trunk native vlan 20        # Use VLAN 20 as native (untagged)
-          - switchport trunk allowed vlan 20,30,40 # Allow VLANs 20,30,40 on trunk
-          - no shutdown
-      loop: "{{ trunk_ports }}"
+    # ...existing tasks...
 
 - name: VLAN subinterface configuration on routers
   hosts: cisco-routers
   gather_facts: no
   become: yes
   vars:
-    # Optional: provide per-router IPs for subinterfaces. Leave empty to skip IP assignment.
-    # Example format:
-    # router_subinterface_ips:
-    #   router1:
-    #     20: 10.0.12.1 255.255.255.0
-    #     30: 10.0.13.1 255.255.255.0
-    #   router2:
-    #     20: 10.0.12.2 255.255.255.0
-     router_subinterface_ips: {}
+    vlan_list:
+      - { id: 20, name: Management, native: true }
+      - { id: 30, name: Data }
+      - { id: 40, name: Voice }
+    router_subinterface_ips: {}
   tasks:
     - name: Configure subinterfaces on router GigabitEthernet0/0/0 for each VLAN
       ios_config:
@@ -53,6 +31,7 @@
           - "interface GigabitEthernet0/0/0.{{ item.id }}"
           - "{{ 'encapsulation dot1Q ' ~ item.id ~ ' native' if item.native | default(false) else 'encapsulation dot1Q ' ~ item.id }}"
           - "{{ 'ip address ' ~ (router_subinterface_ips[inventory_hostname][item.id] ) if (router_subinterface_ips is defined and router_subinterface_ips.get(inventory_hostname) is defined and router_subinterface_ips[inventory_hostname].get(item.id) is defined) else '' }}"
+        skip_empty_lines: true
       loop: "{{ vlan_list }}"
       loop_control:
         label: "GigabitEthernet0/0/0.{{ item.id }}"
