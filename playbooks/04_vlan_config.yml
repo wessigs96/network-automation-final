@@ -1,16 +1,16 @@
 # 04_vlan_config.yml - Create VLANs and configure trunk ports on switch, plus router subinterfaces
 ---
 - name: VLAN and trunk configuration on switch
-  hosts: switches
+  hosts: cisco-switches
   gather_facts: no
   become: yes
   vars:
-    # Define VLAN IDs and names
+    # Define VLAN IDs and names (mark native VLAN where appropriate)
     vlan_list:
-      - { id: 20, name: Management }
+      - { id: 20, name: Management, native: true }
       - { id: 30, name: Data }
       - { id: 40, name: Voice }
-    # Define trunk interfaces to configure
+    # Define trunk interfaces to configure on switches
     trunk_ports:
       - FastEthernet0/1
       - FastEthernet0/2
@@ -33,33 +33,26 @@
       loop: "{{ trunk_ports }}"
 
 - name: VLAN subinterface configuration on routers
-  hosts: routers
+  hosts: cisco-routers
   gather_facts: no
   become: yes
+  vars:
+    # Optional: provide per-router IPs for subinterfaces. Leave empty to skip IP assignment.
+    # Example format:
+    # router_subinterface_ips:
+    #   router1:
+    #     20: 10.0.12.1 255.255.255.0
+    #     30: 10.0.13.1 255.255.255.0
+    #   router2:
+    #     20: 10.0.12.2 255.255.255.0
+     router_subinterface_ips: {}
   tasks:
-    - name: Configure Router1 subinterfaces for VLANs 20, 30, 40
+    - name: Configure subinterfaces on router GigabitEthernet0/0/0 for each VLAN
       ios_config:
         lines:
-          - interface GigabitEthernet0/0/0.20
-          - encapsulation dot1Q 20 native
-          - ip address 10.0.12.1 255.255.255.0     # VLAN 20 interface IP (Management)
-          - interface GigabitEthernet0/0/0.30
-          - encapsulation dot1Q 30
-          - ip address 10.0.13.1 255.255.255.0     # VLAN 30 interface IP (Data)
-          - interface GigabitEthernet0/0/0.40
-          - encapsulation dot1Q 40
-          - ip address 10.0.14.1 255.255.255.0     # VLAN 40 interface IP (Voice)
-      when: inventory_hostname == "Router1"
-    - name: Configure Router2 subinterfaces for VLANs 20, 30, 40
-      ios_config:
-        lines:
-          - interface GigabitEthernet0/0/0.20
-          - encapsulation dot1Q 20 native
-          - ip address 10.0.12.2 255.255.255.0     # VLAN 20 interface IP (Management)
-          - interface GigabitEthernet0/0/0.30
-          - encapsulation dot1Q 30
-          - ip address 10.0.13.2 255.255.255.0     # VLAN 30 interface IP (Data)
-          - interface GigabitEthernet0/0/0.40
-          - encapsulation dot1Q 40
-          - ip address 10.0.14.2 255.255.255.0     # VLAN 40 interface IP (Voice)
-      when: inventory_hostname == "Router2"
+          - "interface GigabitEthernet0/0/0.{{ item.id }}"
+          - "{{ 'encapsulation dot1Q ' ~ item.id ~ ' native' if item.native | default(false) else 'encapsulation dot1Q ' ~ item.id }}"
+          - "{{ 'ip address ' ~ (router_subinterface_ips[inventory_hostname][item.id] ) if (router_subinterface_ips is defined and router_subinterface_ips.get(inventory_hostname) is defined and router_subinterface_ips[inventory_hostname].get(item.id) is defined) else '' }}"
+      loop: "{{ vlan_list }}"
+      loop_control:
+        label: "GigabitEthernet0/0/0.{{ item.id }}"
