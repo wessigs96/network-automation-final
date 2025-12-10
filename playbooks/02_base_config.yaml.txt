@@ -1,0 +1,61 @@
+---
+- name: 02 - Base configuration for routers and switch
+  hosts: cisco-routers:cisco-switches
+  gather_facts: no
+
+  collections:
+    - cisco.ios
+
+  vars:
+    hostname_map:
+      router1: Router1
+      router2: Router2
+      switch1: Switch1
+
+  tasks:
+    - name: Set hostname based on inventory name
+      ios_config:
+        lines:
+          - hostname {{ hostname_map[inventory_hostname] | default(inventory_hostname) }}
+
+    - name: Configure login banner
+      ios_config:
+        lines:
+          - |
+            banner login ^C
+            Authorized access only. Activity may be monitored.
+            ^C
+
+    # ----------------------
+    # Router1 interface descriptions
+    # ----------------------
+    - name: Set interface descriptions on Router1
+      when: inventory_hostname == 'router1'
+      ios_config:
+        lines:
+          - interface GigabitEthernet0/0/0
+          -  description Link to S1 (VLAN 1 mgmt)
+
+    # ----------------------
+    # Router2 interface descriptions
+    # ----------------------
+    - name: Set interface descriptions on Router2
+      when: inventory_hostname == 'router2'
+      ios_config:
+        lines:
+          - interface GigabitEthernet0/0/0
+          -  description Link to S1 (VLAN 1 mgmt)
+
+    # ----------------------
+    # Switch1 interface descriptions
+    # ----------------------
+    - name: Set interface descriptions on Switch1
+      when: inventory_hostname == 'switch1'
+      ios_config:
+        lines:
+          - interface FastEthernet0/1
+          -  description Link to Router1 (VLAN 1)
+          - interface FastEthernet0/2
+          -  description Link to Router2 (VLAN 1)
+          - interface FastEthernet0/24
+          -  description Management PC (VLAN 1)

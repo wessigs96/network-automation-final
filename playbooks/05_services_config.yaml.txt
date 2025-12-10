@@ -1,0 +1,38 @@
+---
+- name: 05 - Configure NTP and logging on routers and switch
+  hosts: cisco-routers:cisco-switches
+  gather_facts: no
+
+  collections:
+    - cisco.ios
+
+  vars:
+    ntp_server_ip: 216.239.35.0
+
+  tasks:
+    - name: Configure NTP server to time.google.com
+      ios_config:
+        lines:
+          - ntp server {{ ntp_server_ip }}
+
+    - name: Configure logging buffered size
+      ios_config:
+        lines:
+          - logging buffered 16384
+
+    - name: Show NTP and logging lines from running config
+      ios_command:
+        commands:
+          - show running-config | include ntp
+          - show running-config | include logging buffered
+      register: services_cfg
+
+    - name: Display NTP and logging configuration on {{ inventory_hostname }}
+      debug:
+        msg: |
+          ===== {{ inventory_hostname }} ({{ ansible_host }}) - Services Config =====
+          NTP lines:
+          {{ services_cfg.stdout[0] }}
+
+          Logging buffered:
+          {{ services_cfg.stdout[1] }}
