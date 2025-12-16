@@ -1,0 +1,61 @@
+---
+# ============================================================
+# 04 - Switch-only VLANs + Trunks
+# ============================================================
+
+- name: 04 - Configure VLANs and trunk ports on switch
+  hosts: cisco-switches
+  gather_facts: no
+
+  vars:
+    vlans_to_create:
+      - { id: 20, name: Management }
+      - { id: 30, name: Data }
+      - { id: 40, name: Voice }
+
+    trunk_ports:
+      - FastEthernet0/1
+      - FastEthernet0/2
+
+    pc_port: FastEthernet0/24
+
+  tasks:
+    - name: Create VLANs (20, 30, 40)
+      ios_config:
+        parents: "vlan {{ item.id }}"
+        lines:
+          - "name {{ item.name }}"
+      loop: "{{ vlans_to_create }}"
+
+    - name: Configure trunk ports to routers (native VLAN 1)
+      ios_config:
+        parents: "interface {{ item }}"
+        lines:
+          - switchport mode trunk
+          - switchport trunk native vlan 1
+          - switchport trunk allowed vlan 1,20,30,40
+      loop: "{{ trunk_ports }}"
+
+    - name: Ensure Management PC port stays access VLAN 1
+      ios_config:
+        parents: "interface {{ pc_port }}"
+        lines:
+          - switchport mode access
+          - switchport access vlan 1
+          - description Management PC (VLAN 1)
+
+    - name: Verify VLANs and trunks
+      ios_command:
+        commands:
+          - show vlan brief
+          - show interfaces trunk
+      register: verify
+
+    - name: Display verification output
+      debug:
+        msg: |
+          ===== {{ inventory_hostname }} ({{ ansible_host }}) - show vlan brief =====
+          {{ verify.stdout[0] }}
+
+          ===== {{ inventory_hostname }} ({{ ansible_host }}) - show interfaces trunk =====
+          {{ verify.stdout[1] }}
