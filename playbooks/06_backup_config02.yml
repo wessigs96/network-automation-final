@@ -1,0 +1,29 @@
+---
+- name: 06 - Backup running configs to localhost
+  hosts: cisco-routers:cisco-switches
+  gather_facts: no
+
+  tasks:
+    - name: Ensure local backups directory exists
+      file:
+        path: "{{ playbook_dir }}/../backups"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+      run_once: true
+
+    - name: Collect running configuration from device
+      ios_command:
+        commands:
+          - show running-config
+      register: running_cfg
+
+    - name: Save running config to local file
+      copy:
+        content: "{{ running_cfg.stdout[0] }}"
+        dest: "{{ playbook_dir }}/../backups/{{ inventory_hostname }}-running.txt"
+      delegate_to: localhost
+
+    - name: Show where the backup was saved
+      debug:
+        msg: "Saved {{ inventory_hostname }} config to backups/{{ inventory_hostname }}-running.txt"
