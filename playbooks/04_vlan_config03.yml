@@ -1,0 +1,100 @@
+---
+# ============================================
+# 04B - Router-on-a-stick (ROAS) + Switch VLANs/Trunks
+# FIX: Do NOT send "no ip address" on the parent interface
+#      (can trigger prompts/timeouts). We only ensure it's up
+#      and build the subinterfaces.
+# ============================================
+
+- name: 04B - Configure ROAS subinterfaces on routers
+  hosts: cisco-routers
+  gather_facts: no
+
+  vars:
+    router_parent_int: GigabitEthernet0/0/0
+
+    # Subinterfaces per router (keyed by inventory hostname)
+    router_subifs:
+      router1:
+        - { vlan: 20, ip: "10.0.12.1", mask: "255.255.255.0" }
+      router2:
+        - { vlan: 20, ip: "10.0.12.2", mask: "255.255.255.0" }
+
+  tasks:
+    - name: Ensure parent interface is up (do NOT remove IP here)
+      ios_config:
+        parents: "interface {{ router_parent_int }}"
+        lines:
+          - no shut
+
+    - name: Configure subinterfaces for each VLAN on this router
+      ios_config:
+        lines: |
+          {% for s in router_subifs[inventory_hostname] %}
+          interface {{ router_parent_int }}.{{ s.vlan }}
+           encapsulation dot1Q {{ s.vlan }}
+           ip address {{ s.ip }} {{ s.mask }}
+           no shut
+          {% endfor %}
+
+    - name: Verify router subinterfaces exist and are up
+      ios_command:
+        commands:
+          - show ip interface brief | include {{ router_parent_int }}
+      register: rtr_ints
+
+    - name: Display router interface brief
+      debug:
+        msg: |
+          ===== {{ inventory_hostname }} ({{ ansible_host }}) - Interfaces =====
+          {{ rtr_ints.stdout[0] }}
+
+
+- name: 04B - Configure VLANs + trunks on switch
+  hosts: cisco-switches
+  gather_facts: no
+
+  vars:
+    # VLANs to create on the switch
+    vlans_to_create:
+      - { id: 20, name: Management }
+      - { id: 30, name: Data }
+      - { id: 40, name: Voice }
+
+    # Trunk ports facing routers
+    trunk_ports:
+      - FastEthernet0/1
+      - FastEthernet0/2
+
+  tasks:
+    - name: Create VLANs 20, 30, 40
+      ios_config:
+        parents: "vlan {{ item.id }}"
+        lines:
+          - name {{ item.name }}
+      loop: "{{ vlans_to_create }}"
+
+    - name: Configure trunk ports to routers (native VLAN 1)
+      ios_config:
+        parents: "interface {{ item }}"
+        lines:
+          - switchport mode trunk
+          - switchport trunk native vlan 1
+          - switchport trunk allowed vlan 1,20,30,40
+      loop: "{{ trunk_ports }}"
+
+    - name: Verify VLANs and trunks
+      ios_command:
+        commands:
+          - show vlan brief
+          - show interfaces trunk
+      register: sw_verify
+
+    - name: Display VLAN and trunk verification
+      debug:
+        msg: |
+          ===== {{ inventory_hostname }} ({{ ansible_host }}) - show vlan brief =====
+          {{ sw_verify.stdout[0] }}
+
+          ===== {{ inventory_hostname }} ({{ ansible_host }}) - show interfaces trunk =====
+          {{ sw_verify.stdout[1] }}
