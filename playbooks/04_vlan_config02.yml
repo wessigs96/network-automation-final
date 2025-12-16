@@ -1,0 +1,48 @@
+---
+- name: 04B - Configure ROAS subinterfaces on routers
+  hosts: cisco-routers
+  gather_facts: no
+
+  vars:
+    router_subifs:
+      router1:
+        - { vlan: 20, ip: "10.0.12.1", mask: "255.255.255.0" }
+      router2:
+        - { vlan: 20, ip: "10.0.12.2", mask: "255.255.255.0" }
+
+  tasks:
+    - name: Configure subinterfaces on router for each VLAN
+      ios_config:
+        lines: |
+          interface GigabitEthernet0/0/0
+           no ip address
+           no shut
+          {% for s in router_subifs[inventory_hostname] %}
+          interface GigabitEthernet0/0/0.{{ s.vlan }}
+           encapsulation dot1Q {{ s.vlan }}
+           ip address {{ s.ip }} {{ s.mask }}
+           no shut
+          {% endfor %}
+
+- name: 04B - Configure VLANs + trunks on switch
+  hosts: cisco-switches
+  gather_facts: no
+
+  tasks:
+    - name: Create VLAN 20, 30, 40
+      ios_config:
+        lines:
+          - vlan 20
+          - name Management
+          - vlan 30
+          - name Data
+          - vlan 40
+          - name Voice
+
+    - name: Configure trunks to routers (native VLAN 1)
+      ios_config:
+        parents: interface range FastEthernet0/1 - 2
+        lines:
+          - switchport mode trunk
+          - switchport trunk native vlan 1
+          - switchport trunk allowed vlan 1,20,30,40
